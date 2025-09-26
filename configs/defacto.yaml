@@ -1,0 +1,40 @@
+data:
+  root: "./dataset/DEFACTO"
+  train_dir: "train"
+  test_dir: "test"
+  raw_dir: "raw"
+  mask_dir: "mask"
+  image_size: 512
+  crop_size: 512
+  center_crop_eval: false
+  return_paths: false
+  extensions: [".png", ".jpg", ".jpeg", ".bmp", ".tiff"]
+  ignore_dataset: []
+
+model:
+  img_size: 512
+  patch_size: 16
+  in_ch: 3
+  d: 512
+  depth: 8
+  evidences: 4
+
+training:
+  model_dir: "./output_DEFACTO/"
+
+  optimization:
+    optimizer:
+      name: "AdamW"
+      lr: 0.0003
+      weight_decay: 0.0001
+      betas: [0.9, 0.999]
+
+    scheduler:
+      name: "CosineAnnealingLR"
+      T_max: 100
+      eta_min: 0.00001
+
+evaluation:
+  save_images: true
+  save_high_res: false
+  threshold: 0.5 
