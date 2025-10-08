@@ -166,7 +166,7 @@ class FullLoss(torch.nn.Module):
     def forward(self, gt_mask, outputs_pred):
         mask_logits = outputs_pred["mask_logits"]
         mask_probs = outputs_pred["mask"]
-        masks_scale = outputs_pred["masks_scale"]
+        # masks_scale = outputs_pred["masks_scale"]
         device = mask_logits.device
         loss_dict = {}
         with torch.no_grad():
@@ -189,24 +189,24 @@ class FullLoss(torch.nn.Module):
             p_pos, t_pos, self.tversky_alpha, self.tversky_beta, self.tversky_gamma
         )
 
-        focal_loss = multiscale_focal_loss(
-            masks_scale=masks_scale,
-            gt_mask=gt_mask,
-            focal_params=self.focal_params,
-            weights=self.focal_weights,
-        )
+        # focal_loss = multiscale_focal_loss(
+        #     masks_scale=masks_scale,
+        #     gt_mask=gt_mask,
+        #     focal_params=self.focal_params,
+        #     weights=self.focal_weights,
+        # )
 
         total_loss = ce
         total_loss = total_loss + self.loss_lambda_dice * dice_loss
         total_loss = total_loss + self.loss_lambda_iou * iou_loss
         total_loss = total_loss + self.loss_lambda_ft * ft_loss
-        total_loss = total_loss + focal_loss
+        # total_loss = total_loss + focal_loss
 
         loss_dict["ce"] = ce
         loss_dict["dice"] = dice_loss
         loss_dict["iou"] = iou_loss
         loss_dict["focal_tversky"] = ft_loss
-        loss_dict["focal"] = focal_loss
+        # loss_dict["focal"] = focal_loss
         loss_dict["total"] = total_loss
 
         return loss_dict
