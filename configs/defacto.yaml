@@ -1,5 +1,5 @@
 data:
-  root: "./dataset/DEFACTO"
+  root: "./dataset/CASIAv2"
   train_dir: "train"
   test_dir: "test"
   raw_dir: "raw"
@@ -13,11 +13,8 @@ data:
 
 model:
   img_size: 512
-  patch_size: 16
-  in_ch: 3
-  d: 512
-  depth: 8
-  evidences: 4
+  D: 128
+  stem_ch: 64
 
 training:
   model_dir: "./output_DEFACTO/"

@@ -17,15 +17,13 @@ from loguru import logger
 
 from optimizer import build_optimizer, build_scheduler
 from dataset import ForgeryDataset
-from net import ANRTNet
+from net import FSDFormer
 from opt import train_one_epoch, evaluate_fn
 import utils
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser(
-        "Copy Move Detection and Localization", add_help=False
-    )
+    parser = argparse.ArgumentParser("Image Manipulation Localization", add_help=False)
     parser.add_argument("--batch-size", default=1, type=int)
     parser.add_argument("--epochs", default=800, type=int)
 
@@ -86,9 +84,9 @@ def main(args, cfg):
     random.seed(seed)
     cudnn.benchmark = False
     cfg_data = cfg["data"]
-    
+
     try:
-        model = ANRTNet(device=device, **cfg["model"])
+        model = FSDFormer(device=device, **cfg["model"])
         model = model.to(device)
 
         # Wrap with DDP if needed
@@ -111,7 +109,7 @@ def main(args, cfg):
         print(f"Error creating model: {e}")
         print("Model config:", cfg["model"])
         raise
-    
+
     if rank == 0:
         print(f"Number of parameters: {n_parameters}")
 
@@ -132,8 +130,6 @@ def main(args, cfg):
         if "flops" in model_info:
             print(f"  FLOPs: {model_info['flops_str']}")
         print()
-
-
 
     # Create datasets
     train_data = ForgeryDataset(split="train", cfg=cfg_data)
