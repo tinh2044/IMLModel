@@ -13,7 +13,7 @@ data:
 
 model:
   img_size: 512
-  D: 128
+  D: 64
   stem_ch: 64
 
 training:
