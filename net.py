@@ -85,7 +85,7 @@ class DecoderStage(nn.Module):
     def forward(self, fsd_i, proj_in):
         # DCFS fusion
         dec_feat = self.dcfs(
-            proj_in, fsd_i
+            fsd_i, proj_in
         )  # expects (spatial, frequency), returns BxD x H x W
         # GFSA guided aggregation and mask
         guide = self.guide_reduce(proj_in)

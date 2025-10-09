@@ -58,7 +58,7 @@ class GFSA(nn.Module):
 
     Outputs:
       Y_out: [B, D, H, W] aggregated feature
-      M_pred: [B, 1, H, W] mask prediction at this scale
+      M_logits: [B, 1, H, W] mask prediction at this scale
     """
 
     def __init__(
@@ -141,7 +141,7 @@ class GFSA(nn.Module):
             nn.BatchNorm2d(mid) if use_bn else nn.Identity(),
             nn.ReLU(inplace=True),
             nn.Conv2d(mid, 1, kernel_size=1, bias=True),
-            nn.Sigmoid(),
+            # nn.Sigmoid(),
         )
 
         # Initialize convs
@@ -172,7 +172,7 @@ class GFSA(nn.Module):
         guide: [B, gC, H, W]
         returns:
           Y_out: [B, D, H, W]
-          M_pred: [B, 1, H, W]
+          M_logits: [B, 1, H, W]
         """
         B, D, H, W = dec.shape
         assert D == self.D, "channel mismatch"
@@ -230,9 +230,9 @@ class GFSA(nn.Module):
         Y_out = F.gelu(Y_out)
 
         # Mask head
-        M_pred = self.mask_head(Y_out)  # [B, 1, H, W]
+        M_logits = self.mask_head(Y_out)  # [B, 1, H, W]
 
-        return Y_out, M_pred
+        return Y_out, M_logits
 
 
 if __name__ == "__main__":
@@ -244,4 +244,4 @@ if __name__ == "__main__":
     gfsa = GFSA(D=D, gC=gC)
     y, m = gfsa(x, guide)
     print("Y_out shape", y.shape)
-    print("M_pred shape", m.shape)
+    print("M_logits shape", m.shape)
