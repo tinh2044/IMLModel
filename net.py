@@ -83,10 +83,8 @@ class DecoderStage(nn.Module):
         self.guide_reduce = nn.Conv2d(D, 1, kernel_size=1)
 
     def forward(self, fsd_i, proj_in):
-        # DCFS fusion
-        dec_feat = self.dcfs(
-            fsd_i, proj_in
-        )  # expects (spatial, frequency), returns BxD x H x W
+        # DCFS fusion (expects (frequency, spatial))
+        dec_feat = self.dcfs(fsd_i, proj_in)
         # GFSA guided aggregation and mask
         guide = self.guide_reduce(proj_in)
         out_feat, mask = self.gfsa(dec_feat, guide)  # assume gfsa returns (feat, mask)
@@ -119,6 +117,9 @@ class FSDFormer(nn.Module):
 
         # projectors
         self.proj4 = Projector(self.C4, D)
+        self.proj3 = Projector(self.C3, D)
+        self.proj2 = Projector(self.C2, D)
+        self.proj1 = Projector(self.C1, D)
 
         self.fsd4 = FSD4(c4=self.C4, D=D)
         self.fsd3 = FSD3(c3=self.C3, D=D)
@@ -146,6 +147,9 @@ class FSDFormer(nn.Module):
         f1, f2, f3, f4 = self.encoder(x)
 
         p4 = self.proj4(f4)  # B x D x H4 x W4
+        p3 = self.proj3(f3)  # B x D x H3 x W3
+        p2 = self.proj2(f2)  # B x D x H2 x W2
+        p1 = self.proj1(f1)  # B x D x H1 x W1
 
         # print(p4.shape)
 
@@ -193,19 +197,19 @@ class FSDFormer(nn.Module):
         )
 
         # Decoder stage 3
-        dec3_feat, p_mask3 = self.dec3(fsd3, dec4_up)
+        dec3_feat, p_mask3 = self.dec3(fsd3, p3)
         dec3_up = F.interpolate(
             dec3_feat, size=f2.shape[2:], mode="bilinear", align_corners=False
         )
 
         # Decoder stage 2
-        dec2_feat, p_mask2 = self.dec2(fsd2, dec3_up)
+        dec2_feat, p_mask2 = self.dec2(fsd2, p2)
         dec2_up = F.interpolate(
             dec2_feat, size=f1.shape[2:], mode="bilinear", align_corners=False
         )
 
         # Decoder stage 1
-        dec1_feat, p_mask1 = self.dec1(fsd1, dec2_up)
+        dec1_feat, p_mask1 = self.dec1(fsd1, p1)
 
         # Upsample masks to input resolution H0 x W0
         H0, W0 = x.shape[2], x.shape[3]
@@ -223,14 +227,13 @@ class FSDFormer(nn.Module):
         )
 
         # multi-scale fusion
-        # multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
-        # fuse = self.fuse_conv(multi)  # B x 1 x H0 x W0
-        fuse = P1_up
+        multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
+        fuse = self.fuse_conv(multi)  # B x 1 x H0 x W0 (logits)
         out_mask = torch.sigmoid(fuse)
         output = {
             "mask_logits": fuse,
             "mask": out_mask,
-            # "masks_scale": (p_mask1, p_mask2, p_mask3, p_mask4),
+            "masks_scale": (p_mask1, p_mask2, p_mask3, p_mask4),
             "features": {
                 "fsd": (fsd1, fsd2, fsd3, fsd4),
                 "dec": (dec1_feat, dec2_feat, dec3_feat, dec4_feat),
