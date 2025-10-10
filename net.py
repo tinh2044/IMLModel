@@ -1,9 +1,13 @@
 # model_complete.py
-from functools import partial
-from fvcore.nn import flop_count_table
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.models import (
+    resnet18,
+    ResNet18_Weights,
+    efficientnet_b0,
+    EfficientNet_B0_Weights,
+)
 
 from block import (
     FSD4,
@@ -18,9 +22,6 @@ from gfsa import (
     GFSA,
 )
 from loss import FullLoss
-from pvt_v2 import (
-    PyramidVisionTransformerV2,
-)
 
 
 class Projector(nn.Module):
@@ -94,24 +95,77 @@ class DecoderStage(nn.Module):
         return out_feat, mask
 
 
+class ResNet18Encoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.conv1 = backbone.conv1
+        self.bn1 = backbone.bn1
+        self.relu = backbone.relu
+        self.maxpool = backbone.maxpool
+        self.layer1 = backbone.layer1  # 64 ch, stride 1 (overall /4)
+        self.layer2 = backbone.layer2  # 128 ch, stride 2 (overall /8)
+        self.layer3 = backbone.layer3  # 256 ch, stride 2 (overall /16)
+        self.layer4 = backbone.layer4  # 512 ch, stride 2 (overall /32)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        f1 = self.layer1(x)
+        f2 = self.layer2(f1)
+        f3 = self.layer3(f2)
+        f4 = self.layer4(f3)
+        return f1, f2, f3, f4
+
+
+class EfficientNetB0Encoder(nn.Module):
+    def __init__(self, pretrained: bool = True):
+        super().__init__()
+        weights = EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrained else None
+        backbone = efficientnet_b0(weights=weights)
+        self.stem = nn.Sequential(backbone.features[0])  # /2
+        # We will group features to approx /4, /8, /16, /32
+        # EfficientNet-B0 blocks and downsample points: [0]/2, [1]/4, [2]/4, [3]/8, [4]/16, [5]/16, [6]/32
+        self.block1 = nn.Sequential(
+            backbone.features[1], backbone.features[2]
+        )  # ~ /4, out 24
+        self.block2 = nn.Sequential(backbone.features[3])  # ~ /8, out 40
+        self.block3 = nn.Sequential(
+            backbone.features[4], backbone.features[5]
+        )  # ~ /16, out 112
+        self.block4 = nn.Sequential(backbone.features[6])  # ~ /32, out 320
+
+    def forward(self, x):
+        x = self.stem(x)  # /2
+        f1 = self.block1(x)  # /4, C=24
+        f2 = self.block2(f1)  # /8, C=40
+        f3 = self.block3(f2)  # /16, C=112
+        f4 = self.block4(f3)  # /32, C=320
+        return f1, f2, f3, f4
+
+
 class FSDFormer(nn.Module):
     def __init__(self, D=64, stem_ch=32, **kwargs):
         super().__init__()
-        self.C4 = stem_ch * 8
-        self.C3 = stem_ch * 4
-        self.C2 = stem_ch * 2
-        self.C1 = stem_ch
-        self.encoder = PyramidVisionTransformerV2(
-            img_size=512,
-            patch_size=4,
-            embed_dims=[self.C1, self.C2, self.C3, self.C4],
-            num_heads=[1, 2, 4, 8],
-            mlp_ratios=[8, 8, 4, 4],
-            qkv_bias=True,
-            norm_layer=partial(nn.LayerNorm, eps=1e-6),
-            depths=[2, 2, 2, 2],
-            sr_ratios=[8, 4, 2, 1],
-        )
+        encoder_name = kwargs.get("encoder", "resnet")
+        pretrained_backbone = kwargs.get("pretrained_backbone", True)
+
+        if encoder_name == "efficientnet_b0":
+            # EfficientNet-B0 feature channels at strides /4, /8, /16, /32
+            self.C1 = 24
+            self.C2 = 40
+            self.C3 = 112
+            self.C4 = 320
+            self.encoder = EfficientNetB0Encoder(pretrained=pretrained_backbone)
+        else:
+            # ResNet-18 feature channels
+            self.C1 = 64
+            self.C2 = 128
+            self.C3 = 256
+            self.C4 = 512
+            self.encoder = ResNet18Encoder()
 
         # channel counts from encoder
 
@@ -197,19 +251,24 @@ class FSDFormer(nn.Module):
         )
 
         # Decoder stage 3
-        dec3_feat, p_mask3 = self.dec3(fsd3, p3)
+        dec3_feat, p_mask3 = self.dec3(fsd3, dec4_up)
         dec3_up = F.interpolate(
             dec3_feat, size=f2.shape[2:], mode="bilinear", align_corners=False
         )
 
         # Decoder stage 2
-        dec2_feat, p_mask2 = self.dec2(fsd2, p2)
+        dec2_feat, p_mask2 = self.dec2(fsd2, dec3_up)
         dec2_up = F.interpolate(
             dec2_feat, size=f1.shape[2:], mode="bilinear", align_corners=False
         )
 
         # Decoder stage 1
-        dec1_feat, p_mask1 = self.dec1(fsd1, p1)
+        dec1_feat, p_mask1 = self.dec1(fsd1, dec2_up)
+
+        # print(f"dec1_feat and fsd1 shape: {dec1_feat.shape}, {fsd1.shape}")
+        # print(f"dec2_feat and fsd2 shape: {dec2_feat.shape}, {fsd2.shape}")
+        # print(f"dec3_feat and fsd3 shape: {dec3_feat.shape}, {fsd3.shape}")
+        # print(f"dec4_feat and fsd4 shape: {dec4_feat.shape}, {fsd4.shape}")
 
         # Upsample masks to input resolution H0 x W0
         H0, W0 = x.shape[2], x.shape[3]
@@ -259,14 +318,14 @@ if __name__ == "__main__":
     model = FSDFormer(D=64, stem_ch=64)
     input_tensor = torch.randn(2, 3, 512, 512)
     gt_mask = torch.randn(2, 1, 512, 512)
-    # print(flop_count_table(FlopCountAnalysis(model, input_tensor), max_depth=2))
     out = model(input_tensor, gt_mask)
+    # print(flop_count_table(FlopCountAnalysis(model, input_tensor), max_depth=2))
     print("out mask shape", out["mask"].shape)  # expect [2,1,256,256]
     for i, m in enumerate(out["masks_scale"], 1):
         print(f"mask P{i} shape", m.shape)
     # features shapes
-    # print("fsd shapes", [f.shape for f in out["features"]["fsd"]])
-    # print("dec shapes", [d.shape for d in out["features"]["dec"]])
+    print("fsd shapes", [f.shape for f in out["features"]["fsd"]])
+    print("dec shapes", [d.shape for d in out["features"]["dec"]])
 
     for k, v in out["loss"].items():
         print(k, v)
