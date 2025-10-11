@@ -308,8 +308,8 @@ class FSDFormer(nn.Module):
 
         # multi-scale fusion
         # multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
-        multi = torch.cat(P1_up, dim=1)  # B x 1 x H0 x W0
-        fuse = self.fuse_conv(multi)  # B x 1 x H0 x W0 (logits)
+        # multi = torch.cat(P1_up, dim=1)  # B x 1 x H0 x W0
+        fuse = self.fuse_conv(P1_up)  # B x 1 x H0 x W0 (logits)
         out_mask = torch.sigmoid(fuse)
         output = {
             "mask_logits": fuse,
