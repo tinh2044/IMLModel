@@ -352,64 +352,9 @@ def get_model_info(model, input_shape, device) -> dict:
     info["non_trainable_params"] = total_params - trainable_params
     dummy_input = torch.randn(input_shape).to(device)
 
-    try:
-        # Temporarily convert SyncBatchNorm back to BatchNorm for FLOPs calculation
-        model_for_flops = model
-        if hasattr(model, "module"):
-            # Handle DDP wrapped model
-            model_for_flops = model.module
-
-        # Create a copy for FLOPs calculation without SyncBatchNorm
-        import copy
-
-        model_copy = copy.deepcopy(model_for_flops)
-
-        # Convert SyncBatchNorm back to BatchNorm for tracing
-        def convert_sync_to_bn(module):
-            for name, child in module.named_children():
-                if isinstance(child, torch.nn.SyncBatchNorm):
-                    # Replace with regular BatchNorm
-                    bn = torch.nn.BatchNorm2d(
-                        child.num_features,
-                        child.eps,
-                        child.momentum,
-                        child.affine,
-                        child.track_running_stats,
-                    )
-                    # Copy parameters if they exist
-                    if child.weight is not None:
-                        bn.weight.data = child.weight.data.clone()
-                    if child.bias is not None:
-                        bn.bias.data = child.bias.data.clone()
-                    if child.running_mean is not None:
-                        bn.running_mean.data = child.running_mean.data.clone()
-                    if child.running_var is not None:
-                        bn.running_var.data = child.running_var.data.clone()
-                    setattr(module, name, bn)
-                else:
-                    convert_sync_to_bn(child)
-
-        convert_sync_to_bn(model_copy)
-        model_copy = model_copy.to(device)
-
-        flops = FlopCountAnalysis(model_copy, dummy_input)
-        flops_total = flops.total()
-        flops_str = f"{flops_total / 1e9:.3f} GFLOPs"
-
-        # Clean up
-        del model_copy
-
-    except RuntimeError as e:
-        if "ProcessGroup" in str(e) or "distributed" in str(e).lower():
-            # Fallback for SyncBatchNorm distributed tracing issues
-            flops_total = 0
-            flops_str = "N/A (SyncBatchNorm tracing issue)"
-        else:
-            raise e
-    except Exception as e:
-        # General fallback for any FLOPs calculation issues
-        flops_total = 0
-        flops_str = f"N/A ({str(e)[:50]}...)"
+    flops = FlopCountAnalysis(model, dummy_input)
+    flops_total = flops.total()
+    flops_str = f"{flops_total / 1e9:.3f} GFLOPs"
     info.update(
         {
             "flops": int(flops_total),
