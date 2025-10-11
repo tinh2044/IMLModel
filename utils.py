@@ -350,27 +350,18 @@ def get_model_info(model, input_shape, device) -> dict:
     info["total_params"] = total_params
     info["trainable_params"] = trainable_params
     info["non_trainable_params"] = total_params - trainable_params
+    dummy_input = torch.randn(input_shape).to(device)
 
-    # Try to compute FLOPs and MACs using fvcore if available
-    try:
-        from fvcore.nn import FlopCountAnalysis
-
-        dummy_input = torch.randn(input_shape).to(device)
-
-        flops = FlopCountAnalysis(model, dummy_input)
-        flops_total = flops.total()
-        flops_str = f"{flops_total / 1e9:.3f} GFLOPs"
-        info.update(
-            {
-                "flops": int(flops_total),
-                "flops_str": flops_str,
-                "params_str": f"{total_params:,.3f}",
-            }
-        )
-    except Exception:
-        # fvcore not available or failed; ignore
-        pass
-
+    flops = FlopCountAnalysis(model, dummy_input)
+    flops_total = flops.total()
+    flops_str = f"{flops_total / 1e9:.3f} GFLOPs"
+    info.update(
+        {
+            "flops": int(flops_total),
+            "flops_str": flops_str,
+            "params_str": f"{total_params:,.3f}",
+        }
+    )
     return info
 
 
