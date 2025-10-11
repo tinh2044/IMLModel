@@ -180,13 +180,17 @@ class EfficientNetEncoder(nn.Module):
 class FSDFormer(nn.Module):
     def __init__(self, D=64, stem_ch=32, **kwargs):
         super().__init__()
+        encoder_name = kwargs.get("encoder", "efficientnet")
         pretrained_backbone = kwargs.get("pretrained_backbone", True)
 
-        variant = kwargs.get("variant", "b0")
-        self.encoder = EfficientNetEncoder(
-            pretrained=pretrained_backbone,
-            variant=variant,
-        )
+        if encoder_name == "efficientnet":
+            variant = kwargs.get("variant", "b0")
+            self.encoder = EfficientNetEncoder(
+                pretrained=pretrained_backbone,
+                variant=variant,
+            )
+        else:
+            self.encoder = ResNet18Encoder()
 
         self.C1, self.C2, self.C3, self.C4 = self.encoder.get_output_channels()
 
@@ -209,7 +213,7 @@ class FSDFormer(nn.Module):
 
         # final fusion head
         self.fuse_conv = nn.Sequential(
-            nn.Conv2d(1, 16, 3, padding=1, bias=False),
+            nn.Conv2d(4, 16, 3, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.Conv2d(16, 1, 1),
@@ -303,9 +307,8 @@ class FSDFormer(nn.Module):
         )
 
         # multi-scale fusion
-        # multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
-        # multi = torch.cat(P1_up, dim=1)  # B x 1 x H0 x W0
-        fuse = self.fuse_conv(P1_up)  # B x 1 x H0 x W0 (logits)
+        multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
+        fuse = self.fuse_conv(multi)  # B x 1 x H0 x W0 (logits)
         out_mask = torch.sigmoid(fuse)
         output = {
             "mask_logits": fuse,
