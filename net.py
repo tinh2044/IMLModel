@@ -180,17 +180,13 @@ class EfficientNetEncoder(nn.Module):
 class FSDFormer(nn.Module):
     def __init__(self, D=64, stem_ch=32, **kwargs):
         super().__init__()
-        encoder_name = kwargs.get("encoder", "efficientnet")
         pretrained_backbone = kwargs.get("pretrained_backbone", True)
 
-        if encoder_name == "efficientnet":
-            variant = kwargs.get("variant", "b0")
-            self.encoder = EfficientNetEncoder(
-                pretrained=pretrained_backbone,
-                variant=variant,
-            )
-        else:
-            self.encoder = ResNet18Encoder()
+        variant = kwargs.get("variant", "b0")
+        self.encoder = EfficientNetEncoder(
+            pretrained=pretrained_backbone,
+            variant=variant,
+        )
 
         self.C1, self.C2, self.C3, self.C4 = self.encoder.get_output_channels()
 
