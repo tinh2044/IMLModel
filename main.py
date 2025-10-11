@@ -87,14 +87,16 @@ def main(args, cfg):
 
     try:
         model = FSDFormer(device=device, **cfg["model"])
+        model = model.to(device)
+        
         # Convert BN to SyncBatchNorm if using CUDA DDP for stabler stats
+        # Only convert after model is on device and before DDP wrapping
         if (
             torch.cuda.is_available()
             and torch.distributed.is_available()
             and torch.distributed.is_initialized()
         ):
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        model = model.to(device)
 
         # Wrap with DDP if needed
         if is_distributed:
