@@ -133,9 +133,7 @@ def main(args, cfg):
         print(f"  Total parameters: {model_info['total_params']:,}")
         print(f"  Trainable parameters: {model_info['trainable_params']:,}")
         print(f"  Non-trainable parameters: {model_info['non_trainable_params']:,}")
-
-        if "flops" in model_info:
-            print(f"  FLOPs: {model_info['flops_str']}")
+        print(f"  FLOPs: {model_info['flops_str']}")
         print()
 
     # Create datasets
@@ -196,14 +194,7 @@ def main(args, cfg):
             print(f"Resume training from {args.resume}")
         checkpoint = torch.load(args.resume, map_location="cpu")
         target_model = model.module if is_distributed else model
-        if utils.check_state_dict(target_model, checkpoint["model_state_dict"]):
-            ret = target_model.load_state_dict(
-                checkpoint["model_state_dict"], strict=False
-            )
-        else:
-            print("Model and state dict are different")
-            raise ValueError("Model and state dict are different")
-
+        ret = target_model.load_state_dict(checkpoint["model_state_dict"], strict=False)
         if "epoch" in checkpoint:
             scheduler_last_epoch = checkpoint["epoch"]
         args.start_epoch = checkpoint["epoch"] + 1

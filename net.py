@@ -95,31 +95,6 @@ class DecoderStage(nn.Module):
         return out_feat, mask
 
 
-class ResNet18Encoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-        backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.conv1 = backbone.conv1
-        self.bn1 = backbone.bn1
-        self.relu = backbone.relu
-        self.maxpool = backbone.maxpool
-        self.layer1 = backbone.layer1  # 64 ch, stride 1 (overall /4)
-        self.layer2 = backbone.layer2  # 128 ch, stride 2 (overall /8)
-        self.layer3 = backbone.layer3  # 256 ch, stride 2 (overall /16)
-        self.layer4 = backbone.layer4  # 512 ch, stride 2 (overall /32)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-        f1 = self.layer1(x)
-        f2 = self.layer2(f1)
-        f3 = self.layer3(f2)
-        f4 = self.layer4(f3)
-        return f1, f2, f3, f4
-
-
 class EfficientNetEncoder(nn.Module):
     def __init__(self, pretrained: bool = True, variant: str = "b0"):
         super().__init__()
@@ -180,25 +155,18 @@ class EfficientNetEncoder(nn.Module):
 class FSDFormer(nn.Module):
     def __init__(self, D=64, stem_ch=32, **kwargs):
         super().__init__()
-        encoder_name = kwargs.get("encoder", "efficientnet")
         pretrained_backbone = kwargs.get("pretrained_backbone", True)
 
-        if encoder_name == "efficientnet":
-            variant = kwargs.get("variant", "b0")
-            self.encoder = EfficientNetEncoder(
-                pretrained=pretrained_backbone,
-                variant=variant,
-            )
-        else:
-            self.encoder = ResNet18Encoder()
+        variant = kwargs.get("variant", "b0")
+        self.encoder = EfficientNetEncoder(
+            pretrained=pretrained_backbone,
+            variant=variant,
+        )
 
         self.C1, self.C2, self.C3, self.C4 = self.encoder.get_output_channels()
 
         # projectors
         self.proj4 = Projector(self.C4, D)
-        # self.proj3 = Projector(self.C3, D)
-        # self.proj2 = Projector(self.C2, D)
-        # self.proj1 = Projector(self.C1, D)
 
         self.fsd4 = FSD4(c4=self.C4, D=D)
         self.fsd3 = FSD3(c3=self.C3, D=D)
@@ -223,11 +191,6 @@ class FSDFormer(nn.Module):
     def forward(self, x, gt_mask=None):
         f1, f2, f3, f4 = self.encoder(x)
         p4 = self.proj4(f4)  # B x D x H4 x W4
-        # p3 = self.proj3(f3)  # B x D x H3 x W3
-        # p2 = self.proj2(f2)  # B x D x H2 x W2
-        # p1 = self.proj1(f1)  # B x D x H1 x W1
-
-        # print(p4.shape)
 
         # FSD pipeline top-down routing
         fsd4 = self.fsd4(f4)  # B x D x H4 x W4
@@ -286,10 +249,6 @@ class FSDFormer(nn.Module):
 
         # Decoder stage 1
         dec1_feat, p_mask1 = self.dec1(fsd1, dec2_up)
-        # print(f"dec1_feat and fsd1 shape: {dec1_feat.shape}, {fsd1.shape}")
-        # print(f"dec2_feat and fsd2 shape: {dec2_feat.shape}, {fsd2.shape}")
-        # print(f"dec3_feat and fsd3 shape: {dec3_feat.shape}, {fsd3.shape}")
-        # print(f"dec4_feat and fsd4 shape: {dec4_feat.shape}, {fsd4.shape}")
 
         # Upsample masks to input resolution H0 x W0
         H0, W0 = x.shape[2], x.shape[3]
