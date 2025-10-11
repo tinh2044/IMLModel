@@ -213,7 +213,7 @@ class FSDFormer(nn.Module):
 
         # final fusion head
         self.fuse_conv = nn.Sequential(
-            nn.Conv2d(4, 16, 3, padding=1, bias=False),
+            nn.Conv2d(1, 16, 3, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.Conv2d(16, 1, 1),
@@ -307,7 +307,8 @@ class FSDFormer(nn.Module):
         )
 
         # multi-scale fusion
-        multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
+        # multi = torch.cat([P1_up, P2_up, P3_up, P4_up], dim=1)  # B x 4 x H0 x W0
+        multi = torch.cat(P1_up, dim=1)  # B x 1 x H0 x W0
         fuse = self.fuse_conv(multi)  # B x 1 x H0 x W0 (logits)
         out_mask = torch.sigmoid(fuse)
         output = {
