@@ -87,8 +87,16 @@ def main(args, cfg):
 
     try:
         model = FSDFormer(device=device, **cfg["model"])
-        # Convert BN to SyncBatchNorm if using CUDA DDP for stabler stats
         model = model.to(device)
+
+        # Convert BN to SyncBatchNorm if using CUDA DDP for stabler stats
+        # Only convert after model is on device and before DDP wrapping
+        if (
+            torch.cuda.is_available()
+            and torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+        ):
+            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
         # Wrap with DDP if needed
         if is_distributed:
@@ -266,8 +274,8 @@ def main(args, cfg):
         scheduler.step()
 
         # Save checkpoint
-        checkpoint_paths = [output_dir / f"checkpoint_{epoch}.pth"]
-        prev_chkpt = output_dir / f"checkpoint_{epoch - 1}.pth"
+        checkpoint_paths = [output_dir / f"cp_{epoch}.pth"]
+        prev_chkpt = output_dir / f"cp_{epoch - 1}.pth"
         if rank == 0 and os.path.exists(prev_chkpt):
             os.remove(prev_chkpt)
         for checkpoint_path in checkpoint_paths:
@@ -301,7 +309,7 @@ def main(args, cfg):
 
         if test_results["iou"] > best_iou:
             best_iou = test_results["iou"]
-            checkpoint_paths = [output_dir / "best_checkpoint.pth"]
+            checkpoint_paths = [output_dir / "best_cp.pth"]
             for checkpoint_path in checkpoint_paths:
                 utils.save_on_master(
                     {
