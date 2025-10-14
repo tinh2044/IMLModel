@@ -12,7 +12,7 @@ import yaml
 
 from loguru import logger
 
-from net import CMFDNet
+from net import IMLModel
 from metrics import compute_metrics
 from logger import MetricLogger, SmoothedValue
 import utils
@@ -169,7 +169,7 @@ def discover_datasets(datasets_dir: Path) -> List[Dict[str, str]]:
 
 def test_single_dataset(
     dataset_info: Dict[str, str],
-    model: CMFDNet,
+    model: IMLModel,
     device: torch.device,
     args,
     cfg: Dict,
@@ -348,7 +348,7 @@ def main(args):
     device = torch.device(device_str)
 
     # Load model
-    model = CMFDNet(**model_cfg).to(device)
+    model = IMLModel(**model_cfg).to(device)
     ckpt = torch.load(args.resume, map_location="cpu")
     ret = model.load_state_dict(ckpt["model_state_dict"], strict=False)
     logger.info(
